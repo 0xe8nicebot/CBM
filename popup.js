@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const structure = {};
     data.forEach(item => {
       if (item.type === 'file' && item.name.endsWith('.md')) {
+        // 使用完整路径作为值
         structure[item.name.replace('.md', '')] = item.path;
       } else if (item.type === 'dir') {
         structure[item.name] = item.path;
@@ -73,7 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   function loadMarkdown(filename) {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}/${filename}`;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filename}`;
     console.log('Loading markdown from URL:', url);
   
     fetch(url)
@@ -88,12 +89,13 @@ document.addEventListener('DOMContentLoaded', function() {
         return response.json();
       })
       .then(data => {
-        const content = atob(data.content);
+        // 使用 TextDecoder 来正确解码 base64 内容
+        const content = new TextDecoder('utf-8').decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
         document.getElementById('content').innerHTML = `<pre>${content}</pre>`;
       })
       .catch(error => {
         console.error('Error loading markdown:', error);
-        // 在这里添加用户友好的错误提示
+        document.getElementById('content').innerHTML = `<p>Error loading content: ${error.message}</p>`;
       });
   }
 
