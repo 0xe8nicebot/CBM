@@ -46,14 +46,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const structure = {};
     data.forEach(item => {
       if (item.type === 'file' && item.name.endsWith('.md')) {
-        // 使用完整路径作为值
+        console.log('Found Markdown file:', item.name);
         structure[item.name.replace('.md', '')] = item.path;
       } else if (item.type === 'dir') {
-        structure[item.name] = item.path;
+        console.log('Found directory:', item.name);
+        structure[item.name] = fetchDirectoryContents(item.path);
       }
     });
+    console.log('Processed structure:', structure);
     return structure;
   }
+
+  function fetchDirectoryContents(path) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    return fetch(url)
+      .then(response => response.json())
+      .then(data => processGitHubData(data))
+      .catch(error => {
+        console.error(`Error fetching directory contents for ${path}:`, error);
+        return {};
+      });
+  }
+  
 
   function renderMenu(structure, parentElement = menu) {
     for (let key in structure) {
@@ -61,17 +75,23 @@ document.addEventListener('DOMContentLoaded', function() {
       item.className = 'menu-item';
       item.textContent = key;
       parentElement.appendChild(item);
-
-      if (typeof structure[key] === 'object') {
-        const submenu = document.createElement('div');
-        submenu.className = 'submenu';
-        item.appendChild(submenu);
-        renderMenu(structure[key], submenu);
-      } else {
-        item.addEventListener('click', () => loadMarkdown(structure[key]));
+  
+      if (structure[key] instanceof Promise) {
+        structure[key].then(subStructure => {
+          const submenu = document.createElement('div');
+          submenu.className = 'submenu';
+          item.appendChild(submenu);
+          renderMenu(subStructure, submenu);
+        });
+      } else if (typeof structure[key] === 'string') {
+        console.log('Adding click event for:', key, 'with path:', structure[key]);
+        item.addEventListener('click', () => {
+          console.log('Clicked on:', key);
+          loadMarkdown(structure[key]);
+        });
       }
     }
-  };
+  }
 
   function loadMarkdown(filename) {
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filename}`;
@@ -79,24 +99,53 @@ document.addEventListener('DOMContentLoaded', function() {
   
     fetch(url)
       .then(response => {
+        console.log('Response status:', response.status);
         if (!response.ok) {
-          console.error('Response status:', response.status);
-          return response.text().then(text => {
-            console.error('Response text:', text);
-            throw new Error(`HTTP error! status: ${response.status}`);
-          });
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
       })
       .then(data => {
-        // 使用 TextDecoder 来正确解码 base64 内容
-        const content = new TextDecoder('utf-8').decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
-        document.getElementById('content').innerHTML = `<pre>${content}</pre>`;
+        console.log('Received markdown data:', data);
+        if (!data.content) {
+          throw new Error('No content found in the response');
+        }
+        const content = decodeURIComponent(escape(atob(data.content)));
+        console.log('Decoded content:', content);
+        const html = simpleMarkdownToHtml(content);
+        console.log('Converted HTML:', html);
+        document.getElementById('content').innerHTML = html;
       })
       .catch(error => {
         console.error('Error loading markdown:', error);
         document.getElementById('content').innerHTML = `<p>Error loading content: ${error.message}</p>`;
       });
+  }
+
+  function simpleMarkdownToHtml(markdown) {
+    // 处理标题
+    markdown = markdown.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    markdown = markdown.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    markdown = markdown.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    
+    // 处理粗体
+    markdown = markdown.replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>');
+    
+    // 处理斜体
+    markdown = markdown.replace(/\*(.*)\*/gim, '<em>$1</em>');
+    
+    // 处理链接
+    markdown = markdown.replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2">$1</a>');
+    
+    // 处理列表
+    markdown = markdown.replace(/^\s*\*\s(.*)/gim, '<li>$1</li>');
+    markdown = markdown.replace(/<\/li>\n<li>/g, '</li><li>');
+    markdown = markdown.replace(/(<li>.*<\/li>)/gim, '<ul>$1</ul>');
+    
+    // 处理段落
+    markdown = markdown.replace(/^\s*(\n?[^\n]+)\n*/gim, '<p>$1</p>');
+    
+    return markdown;
   }
 
 });
