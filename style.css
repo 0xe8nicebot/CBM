@@ -44,3 +44,8 @@ body {
 .submenu {
   padding-left: 20px;
 } 
+
+.menu-item.active {
+  background-color: #e0e0e0;
+  font-weight: bold;
+}

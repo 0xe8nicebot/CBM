@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // 从GitHub获取菜单结构和Markdown文件
   fetchMenuStructure().then(structure => {
     renderMenu(structure);
+    openDefaultOrLastDocument(structure);
   });
 
   function fetchMenuStructure() {
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const item = document.createElement('div');
       item.className = 'menu-item';
       item.textContent = key;
+      item.dataset.path = structure[key]; // 添加数据属性来存储路径
       parentElement.appendChild(item);
   
       if (structure[key] instanceof Promise) {
@@ -88,6 +90,8 @@ document.addEventListener('DOMContentLoaded', function() {
         item.addEventListener('click', () => {
           console.log('Clicked on:', key);
           loadMarkdown(structure[key]);
+          saveLastOpenedDocument(structure[key]);
+          updateActiveMenuItem(structure[key]);
         });
       }
     }
@@ -115,12 +119,42 @@ document.addEventListener('DOMContentLoaded', function() {
         const html = simpleMarkdownToHtml(content);
         console.log('Converted HTML:', html);
         document.getElementById('content').innerHTML = html;
+        updateActiveMenuItem(filename);
       })
       .catch(error => {
         console.error('Error loading markdown:', error);
         document.getElementById('content').innerHTML = `<p>Error loading content: ${error.message}</p>`;
       });
   }
+
+  function openDefaultOrLastDocument(structure) {
+    const lastOpenedDocument = localStorage.getItem('lastOpenedDocument');
+    if (lastOpenedDocument) {
+      loadMarkdown(lastOpenedDocument);
+    } else {
+      const firstDocument = Object.values(structure).find(value => typeof value === 'string');
+      if (firstDocument) {
+        loadMarkdown(firstDocument);
+        saveLastOpenedDocument(firstDocument);
+      }
+    }
+  }
+
+  function saveLastOpenedDocument(filename) {
+    localStorage.setItem('lastOpenedDocument', filename);
+  }  
+  
+  function updateActiveMenuItem(path) {
+    // 移除所有菜单项的激活状态
+    const allMenuItems = document.querySelectorAll('.menu-item');
+    allMenuItems.forEach(item => item.classList.remove('active'));
+
+    // 为当前打开的文档对应的菜单项添加激活状态
+    const activeItem = document.querySelector(`.menu-item[data-path="${path}"]`);
+    if (activeItem) {
+      activeItem.classList.add('active');
+    }
+  }  
 
   function simpleMarkdownToHtml(markdown) {
     // 处理标题
