@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const menu = document.getElementById('menu');
   const content = document.getElementById('content');
 
+  let structure;
+
   menuToggle.addEventListener('click', function() {
     menu.classList.toggle('hidden');
   });
@@ -10,10 +12,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // 定义 GitHub 仓库信息
   const owner = '0xe8nicebot';
   const repo = 'CBM';
-  const singleMarkdownPath = 'content.md';
+  const singleMarkdownPath = 'contents/content.md'
 
   // 从GitHub获取菜单结构和Markdown文件
-  fetchMenuStructure().then(structure => {
+  fetchMenuStructure().then(fetchedStructure => {
+    structure = fetchedStructure; // Assign the fetched structure to the top-level variable
     renderMenu(structure);
     openDefaultOrLastDocument(structure);
   });
@@ -40,8 +43,26 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .catch(error => {
         console.error('Error fetching menu structure:', error);
-        // 在这里添加用户友好的错误提示
+        let errorMessage = '获取菜单结构时出错。';
+        if (error.message.includes('404')) {
+          errorMessage = `找不到文件 "${singleMarkdownPath}"。请检查以下内容：
+          1. 文件路径是否正确？当前路径：${singleMarkdownPath}
+          2. 文件是否存在于仓库中？
+          3. 仓库名称和所有者是否正确？当前设置：${owner}/${repo}
+          4. 您是否有权限访问该仓库？`;
+        }
+        displayErrorMessage(errorMessage);
+        return {}; // 返回空对象，以便后续代码可以继续执行
       });
+  }
+
+  // 添加新函数来显示错误消息
+  function displayErrorMessage(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.innerHTML = message.replace(/\n/g, '<br>');
+    content.innerHTML = ''; // 清空内容区域
+    content.appendChild(errorDiv);
   }
 
   // 处理 Markdown 内容并生成菜单结构
