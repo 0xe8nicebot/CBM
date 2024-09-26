@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // 定义 GitHub 仓库信息
   const owner = '0xe8nicebot';
   const repo = 'CBM';
-  const path = 'contents';
+  const singleMarkdownPath = 'content.md';
 
   // 从GitHub获取菜单结构和Markdown文件
   fetchMenuStructure().then(structure => {
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   function fetchMenuStructure() {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${singleMarkdownPath}`;
     console.log('Fetching from URL:', url);
   
     return fetch(url)
@@ -35,12 +35,37 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .then(data => {
         console.log('Received data:', data);
-        return processGitHubData(data);
+        const content = decodeURIComponent(escape(atob(data.content)));
+        return processMarkdownContent(content);
       })
       .catch(error => {
         console.error('Error fetching menu structure:', error);
         // 在这里添加用户友好的错误提示
       });
+  }
+
+  // 处理 Markdown 内容并生成菜单结构
+  function processMarkdownContent(content) {
+    const lines = content.split('\n');
+    const structure = {};
+    let currentSection = null;
+
+    lines.forEach(line => {
+      if (line.startsWith('# ')) {
+        currentSection = line.substring(2).trim();
+        structure[currentSection] = [];
+      } else if (line.startsWith('## ') && currentSection) {
+        structure[currentSection].push({
+          title: line.substring(3).trim(),
+          content: ''
+        });
+      } else if (currentSection && structure[currentSection].length > 0) {
+        structure[currentSection][structure[currentSection].length - 1].content += line + '\n';
+      }
+    });
+
+    console.log('Processed structure:', structure);
+    return structure;
   }
   
   function processGitHubData(data) {
@@ -71,90 +96,67 @@ document.addEventListener('DOMContentLoaded', function() {
   
 
   function renderMenu(structure, parentElement = menu) {
-    for (let key in structure) {
-      const item = document.createElement('div');
-      item.className = 'menu-item';
-      item.textContent = key;
-      item.dataset.path = structure[key]; // 添加数据属性来存储路径
-      parentElement.appendChild(item);
+    for (let section in structure) {
+      const sectionItem = document.createElement('div');
+      sectionItem.className = 'menu-item';
+      sectionItem.textContent = section;
+      parentElement.appendChild(sectionItem);
   
-      if (structure[key] instanceof Promise) {
-        structure[key].then(subStructure => {
-          const submenu = document.createElement('div');
-          submenu.className = 'submenu';
-          item.appendChild(submenu);
-          renderMenu(subStructure, submenu);
+      const submenu = document.createElement('div');
+      submenu.className = 'submenu';
+      sectionItem.appendChild(submenu);
+  
+      structure[section].forEach((item, index) => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'menu-item';
+        menuItem.textContent = item.title;
+        menuItem.dataset.section = section;
+        menuItem.dataset.index = index;
+        submenu.appendChild(menuItem);
+  
+        menuItem.addEventListener('click', () => {
+          console.log('Clicked on:', item.title);
+          loadContent(section, index);
+          saveLastOpenedDocument(section, index);
+          updateActiveMenuItem(menuItem);
         });
-      } else if (typeof structure[key] === 'string') {
-        console.log('Adding click event for:', key, 'with path:', structure[key]);
-        item.addEventListener('click', () => {
-          console.log('Clicked on:', key);
-          loadMarkdown(structure[key]);
-          saveLastOpenedDocument(structure[key]);
-          updateActiveMenuItem(structure[key]);
-        });
-      }
+      });
     }
   }
 
-  function loadMarkdown(filename) {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filename}`;
-    console.log('Loading markdown from URL:', url);
-  
-    fetch(url)
-      .then(response => {
-        console.log('Response status:', response.status);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        console.log('Received markdown data:', data);
-        if (!data.content) {
-          throw new Error('No content found in the response');
-        }
-        const content = decodeURIComponent(escape(atob(data.content)));
-        console.log('Decoded content:', content);
-        const html = simpleMarkdownToHtml(content);
-        console.log('Converted HTML:', html);
-        document.getElementById('content').innerHTML = html;
-        updateActiveMenuItem(filename);
-      })
-      .catch(error => {
-        console.error('Error loading markdown:', error);
-        document.getElementById('content').innerHTML = `<p>Error loading content: ${error.message}</p>`;
-      });
+  function loadContent(section, index) {
+    const content = structure[section][index].content;
+    const html = simpleMarkdownToHtml(content);
+    document.getElementById('content').innerHTML = html;
+    updateActiveMenuItem(document.querySelector(`.menu-item[data-section="${section}"][data-index="${index}"]`));
   }
 
   function openDefaultOrLastDocument(structure) {
-    const lastOpenedDocument = localStorage.getItem('lastOpenedDocument');
-    if (lastOpenedDocument) {
-      loadMarkdown(lastOpenedDocument);
+    const lastOpenedSection = localStorage.getItem('lastOpenedSection');
+    const lastOpenedIndex = localStorage.getItem('lastOpenedIndex');
+    if (lastOpenedSection && lastOpenedIndex) {
+      loadContent(lastOpenedSection, parseInt(lastOpenedIndex));
     } else {
-      const firstDocument = Object.values(structure).find(value => typeof value === 'string');
-      if (firstDocument) {
-        loadMarkdown(firstDocument);
-        saveLastOpenedDocument(firstDocument);
+      const firstSection = Object.keys(structure)[0];
+      if (firstSection && structure[firstSection].length > 0) {
+        loadContent(firstSection, 0);
+        saveLastOpenedDocument(firstSection, 0);
       }
     }
   }
 
-  function saveLastOpenedDocument(filename) {
-    localStorage.setItem('lastOpenedDocument', filename);
-  }  
+  function saveLastOpenedDocument(section, index) {
+    localStorage.setItem('lastOpenedSection', section);
+    localStorage.setItem('lastOpenedIndex', index);
+  }
   
-  function updateActiveMenuItem(path) {
-    // 移除所有菜单项的激活状态
+  function updateActiveMenuItem(activeItem) {
     const allMenuItems = document.querySelectorAll('.menu-item');
     allMenuItems.forEach(item => item.classList.remove('active'));
-
-    // 为当前打开的文档对应的菜单项添加激活状态
-    const activeItem = document.querySelector(`.menu-item[data-path="${path}"]`);
     if (activeItem) {
       activeItem.classList.add('active');
     }
-  }  
+  } 
 
   function simpleMarkdownToHtml(markdown) {
     // 处理标题
